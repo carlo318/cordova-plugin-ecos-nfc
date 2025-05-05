@@ -582,8 +582,12 @@ var nfc = {
 
     disableReaderMode: function(successCallback, errorCallback) {
         cordova.exec(successCallback, errorCallback, 'NfcPlugin', 'disableReaderMode', []);
-    }
+    },
 
+    mifareReadBlock = function (success, failure) {
+      cordova.exec(success, failure, "NfcPlugin", "mifareReadBlock", []);
+    };
+    
 };
 
 var util = {
