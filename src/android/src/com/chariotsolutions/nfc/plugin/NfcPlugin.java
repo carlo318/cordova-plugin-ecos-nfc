@@ -28,11 +28,13 @@ import android.nfc.NfcAdapter;
 import android.nfc.NfcEvent;
 import android.nfc.Tag;
 import android.nfc.TagLostException;
+import android.nfc.tech.MifareClassic;
 import android.nfc.tech.Ndef;
 import android.nfc.tech.NdefFormatable;
 import android.nfc.tech.TagTechnology;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.util.Base64;
 import android.util.Log;
 
 public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCompleteCallback {
@@ -89,6 +91,8 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
     private CallbackContext channelCallback;
     private CallbackContext shareTagCallback;
     private CallbackContext handoverCallback;
+
+    private Tag tag;
 
     @Override
     public boolean execute(String action, JSONArray data, CallbackContext callbackContext) throws JSONException {
@@ -189,6 +193,10 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
         } else if (action.equalsIgnoreCase(CLOSE)) {
             close(callbackContext);
 
+        } else if (action.equalsIgnoreCase("mifareReadBlock")) {
+            CordovaArgs args = new CordovaArgs(data); // execute is using the old signature with JSON data
+            mifareReadBlock(data, callbackContext);
+
         } else {
             // invalid action
             return false;
@@ -196,6 +204,37 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
 
         return true;
     }
+
+    private void mifareReadBlock(JSONArray args, CallbackContext callbackContext) {
+        if (tag == null) {
+            callbackContext.error("Nessun tag disponibile");
+            return;
+        }
+
+        MifareClassic mfc = MifareClassic.get(tag);
+        if (mfc == null) {
+            callbackContext.error("Il tag non supporta MifareClassic");
+            return;
+        }
+
+        try {
+            mfc.connect();
+            boolean auth = mfc.authenticateSectorWithKeyA(1, MifareClassic.KEY_DEFAULT);
+            if (!auth) {
+                callbackContext.error("Autenticazione fallita");
+                return;
+            }
+
+            byte[] data = mfc.readBlock(4);
+            callbackContext.success(Base64.encodeToString(data, Base64.NO_WRAP));
+
+        } catch (Exception e) {
+            callbackContext.error("Errore: " + e.getMessage());
+        } finally {
+            try { mfc.close(); } catch (Exception ignored) {}
+        }
+    }
+
 
     private String getNfcStatus() {
         NfcAdapter nfcAdapter = NfcAdapter.getDefaultAdapter(getActivity());
@@ -700,7 +739,8 @@ public class NfcPlugin extends CordovaPlugin implements NfcAdapter.OnNdefPushCom
                 return;
             }
 
-            Tag tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
+            // Save tag in class variable to be used also in MifareClassic
+            tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
             Parcelable[] messages = intent.getParcelableArrayExtra((NfcAdapter.EXTRA_NDEF_MESSAGES));
 
             if (action.equals(NfcAdapter.ACTION_NDEF_DISCOVERED)) {
